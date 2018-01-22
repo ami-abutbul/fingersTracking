@@ -73,7 +73,7 @@ class Study(object):
         self.study_dir = study_dir
         self.frames, self.path = Study._load_study_from_dir(study_dir)
         self.frames_len = len(self.frames)
-        self.image_index = warm_frames_num
+        self.image_index = warm_frames_num + 1  # shift one image
         self.finished_successfully = False
 
     def is_last_image(self):
@@ -91,9 +91,10 @@ class Study(object):
             im = np.expand_dims(im, axis=0)
         return im
 
-    def get_image(self):
+    def get_image(self, advance_counter=True):
         mat_image = self.get_image_by_index(self.image_index)
-        self.image_index += 1
+        if advance_counter:
+            self.image_index += 1
         if mat_image is None:
             return None
         else:
@@ -104,6 +105,12 @@ class Study(object):
 
     def next(self):
         return self.get_image(), self.get_relative_step()
+
+    def next_couple(self):
+        frame1 = self.get_image()
+        direction_vec = self.get_relative_step()
+        frame2 = self.get_image(advance_counter=False)
+        return frame1, frame2, direction_vec
 
     def get_warm_frames(self):
         return [self.get_image_by_index(i) for i in range(warm_frames_num)]
@@ -120,7 +127,9 @@ class Study(object):
 
     @classmethod
     def _image_pre_processing(cls, image):
-        return image / 255.
+        im = image / 255.
+        return im - np.mean(im)
+        # return image / 255.
 
 
 class StudiesHandler(object):
@@ -134,6 +143,7 @@ class StudiesHandler(object):
             self.studies = dir_to_subdir_list(studies_dir)
         self.current_study_index = 0
         self.current_study = None
+        self.epoch_done = False
 
     def get_study(self):
         self.current_study = Study(self.studies[self.current_study_index])
@@ -141,6 +151,7 @@ class StudiesHandler(object):
         if self.current_study_index == len(self.studies):
             self.current_study_index = 0
             shuffle(self.studies)
+            self.epoch_done = True
         return self.current_study
 
     @classmethod

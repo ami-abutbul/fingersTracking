@@ -154,7 +154,7 @@ if __name__ == '__main__':
     # Board().record_path("D:/private/datasets/movingPoint/paths")
     # Board().play("D:/private/datasets/movingPoint/paths", "D:/private/datasets/movingPoint/studies")
 
-    sub_dirs = dir_to_subdir_list("D:/private/datasets/movingPoint/studies9.1.18")
+    sub_dirs = dir_to_subdir_list("D:/private/datasets/movingPoint/studies")
     for dir in sub_dirs:
         video_path = os.path.join(dir, "video.avi")
         extract_frames_from_video(video_path)

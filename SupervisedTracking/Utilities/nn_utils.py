@@ -6,8 +6,8 @@ def initializer():
     return tf.contrib.layers.xavier_initializer()
 
 
-def pre_processing(img):
-    return img / 255.
+# def pre_processing(img):
+#     return img / 255.
 
 
 def leaky_relu(x, alpha=0.2):
@@ -63,7 +63,15 @@ def conv_2_half_size(batch_input, out_channels, scope_name="conv_2_half_size"):
         #                        0 0 0 0
         padded_input = tf.pad(batch_input, [[0, 0], [1, 1], [1, 1], [0, 0]], mode="CONSTANT")
         conv_res = tf.nn.conv2d(padded_input, filters, [1, 2, 2, 1], padding="VALID")
-        return conv_res + bias, [filters, bias]
+        bias_conv = tf.nn.bias_add(conv_res, bias)
+        return bias_conv, [filters, bias]
+
+
+def conv_relu_2_half_size(batch_input, out_channels, scope_name="conv_relu_2_half_size"):
+    with tf.variable_scope(scope_name):
+        bias_conv, vars = conv_2_half_size(batch_input, out_channels, scope_name=scope_name)
+        relu = tf.nn.relu(bias_conv, name='relu')
+        return relu, vars
 
 
 def deconv(batch_input, out_channels, filter_size, scope_name="deconv"):

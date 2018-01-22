@@ -12,10 +12,9 @@ import sys
 
 class Tracker(object):
     def __init__(self):
-        self.input_frames = tf.placeholder(tf.float32, shape=[batch_size, image_height, image_width, 3], name='input')
-        self.cell_state = tf.placeholder(tf.float32, [batch_size, rnn_state_size])
-        self.hidden_state = tf.placeholder(tf.float32, [batch_size, rnn_state_size])
-        self.target = tf.placeholder(tf.float32, [batch_size, 2])
+        self.minibatch_size = tf.placeholder(tf.int32, shape=[], name='minibatch_size')
+        self.input_frames = tf.placeholder(tf.float32, shape=[None, image_height, image_width, 3], name='input')
+        self.target = tf.placeholder(tf.float32, [None, 2])
         self.keep_prob = tf.placeholder(dtype=tf.float32, shape=[], name='keep_prob')
         self.loss = None
         self.out_state = None
@@ -46,31 +45,21 @@ class Tracker(object):
 
                 out, _ = conv_relu(out, 512, 3, "conv5_1")
                 out, _ = conv_relu(out, 512, 3, "conv5_2")
-                out, _ = conv_relu(out, 512, 3, "conv5_3")
+                out, _ = conv_2_half_size(out, 512, "conv5_3")  # to reduce image spatial size
                 out = tf.nn.max_pool(out, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name='pool5')
 
-                out, _ = conv_2_half_size(out, 512, "conv6_1")  # to reduce image spatial size
-
-            with tf.variable_scope("preRNN"):
-                flat = slim.flatten(out)
-                out = tf.nn.dropout(flat, keep_prob=self.keep_prob)
-                out, _ = fully_connected(out, rnn_state_size, "fc7")
+            with tf.variable_scope("fullyConnected"):
+                out = slim.flatten(out)
+                out = tf.nn.dropout(out, keep_prob=self.keep_prob)
+                out, _ = fully_connected(out, main_fc_size, "fc7")
                 out = tf.nn.relu(out)
-                out = tf.reshape(out, shape=[batch_size, 1, -1])
-
-            with tf.variable_scope("RNN"):
-                state = tf.contrib.rnn.LSTMStateTuple(self.cell_state, self.hidden_state)
-                cell = tf.contrib.rnn.BasicLSTMCell(rnn_state_size, state_is_tuple=True)
-                out, self.out_state = tf.nn.dynamic_rnn(cell, out, initial_state=state, dtype=tf.float32)
-                out = tf.reshape(out, shape=[batch_size, -1])
-
-            with tf.variable_scope("prediction"):
+                out = tf.reshape(out, [self.minibatch_size, main_fc_size*2])
                 self.predict, _ = fully_connected(out, 2, "fc8")
+
+            with tf.variable_scope("optimizer"):
                 self.loss = tf.reduce_sum(tf.square(self.predict - self.target))
-                self.check = [v.name for v in tf.trainable_variables()]
-                # trained_vars = [v for v in tf.trainable_variables() if "FingersTracker" in v.name]
-                # self.optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(self.loss, var_list=trained_vars)
-                self.optimizer = tf.train.MomentumOptimizer(momentum=0.9, learning_rate=learning_rate).minimize(self.loss)#, var_list=trained_vars)
+                #self.optimizer = tf.train.MomentumOptimizer(momentum=0.9, learning_rate=learning_rate).minimize(self.loss)
+                self.optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(self.loss)
         return self
 
 
@@ -84,7 +73,7 @@ def train(studies_dir, list_of_dirs=False):
     saver = tf.train.Saver()
     init = tf.global_variables_initializer()
 
-    keep_prob = 1
+    keep_prob = 0.8
     # update_prob_rate = epoch_num*0.9 / 6
 
     with tf.Session() as sess:
@@ -104,31 +93,32 @@ def train(studies_dir, list_of_dirs=False):
             print("{}) study: {}".format(i, study.study_dir))
             print("#####################################################")
 
-            current_cell_state = np.zeros((batch_size, rnn_state_size))
-            current_hidden_state = np.zeros((batch_size, rnn_state_size))
-
-            warm_frames = study.get_warm_frames()
-            for frame in warm_frames:
-                next_state = sess.run(tracker.out_state, feed_dict={tracker.input_frames: [frame],
-                                                                      tracker.keep_prob: keep_prob,
-                                                                      tracker.cell_state: current_cell_state,
-                                                                      tracker.hidden_state: current_hidden_state})
-                current_cell_state, current_hidden_state = next_state
-            # old_state = current_cell_state
             while not study.is_end_of_study():
-                image, point = study.next()
-                point = [point.x, point.y]
-                # _, loss, next_state, p, check = sess.run([tracker.optimizer, tracker.loss, tracker.out_state, tracker.predict, tracker.check],
-                check = sess.run(tracker.check,
-                                         feed_dict={tracker.input_frames: image,
-                                                    tracker.target: [point],
-                                                    tracker.keep_prob: keep_prob,
-                                                    tracker.cell_state: current_cell_state,
-                                                    tracker.hidden_state: current_hidden_state})
-                print(check)
-                # old_state = current_cell_state
-                # print("predict: {}, relative: {}, loss = {}".format(np.array(p), point, loss))
-                # print("check: {}".format(check))
+                minibatch_size = 0
+                images = []
+                points = []
+                while not study.is_end_of_study() and minibatch_size < batch_size:
+                    image1, image2, point = study.next_couple()
+                    if image2 is None:
+                        break
+                    minibatch_size += 1
+                    images.append(image1.reshape((image_height, image_width, 3)))
+                    images.append(image2.reshape((image_height, image_width, 3)))
+                    points.append([point.x, point.y])
+
+                if len(images) == 0:
+                    continue
+
+                _, loss, p = sess.run([tracker.optimizer, tracker.loss, tracker.predict],
+                                         feed_dict={tracker.minibatch_size: minibatch_size,
+                                                    tracker.input_frames: images,
+                                                    tracker.target: points,
+                                                    tracker.keep_prob: keep_prob})
+                p = np.array(p)
+                print("------------------------------------------------------------------")
+                print("loss = {}".format(loss))
+                for i in range(len(points)):
+                    print("predict: {}, relative: {}".format(p[i], points[i]))
 
             saver.save(sess, checkpoint_file)
 
@@ -190,8 +180,9 @@ if __name__ == '__main__':
     if mode == "train":
         print("Start training ..")
         if platform.system() == 'Linux':
-            train(["/home/ami/fingersTracking/data/studies",
-                   "/home/ami/fingersTracking/data/studies9.1.18"], list_of_dirs=True)
+            train("/home/ami/fingersTracking/data/try")  
+            #train(["/home/ami/fingersTracking/data/studies",
+            #      "/home/ami/fingersTracking/data/studies9.1.18"], list_of_dirs=True)
         else:
             train("C:/Users/il115552/Desktop/New folder (6)")
 
