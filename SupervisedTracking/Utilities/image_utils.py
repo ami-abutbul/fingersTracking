@@ -157,10 +157,12 @@ if __name__ == '__main__':
     # print(msk)
 
     img = Image.open("D:/private/datasets/handTrack/studies/full_hands/17.12.17/1/frames/0.jpg")
-    w, h = img.size
-    print(w, h)
-    print(img.mode)
-    a = image_to_mat(img, shape=(480, 640, 3))
-    print(a.shape)
-    im = mat_to_image(a, shape=(480, 640, 3))
-    im.show()
+    # w, h = img.size
+    # print(w, h)
+    # print(img.mode)
+    # a = image_to_mat(img, shape=(480, 640, 3))
+    # print(a.shape)
+    # im = mat_to_image(a, shape=(480, 640, 3))
+    # im.show()
+    img = img.convert('L').show()
+    print(np.array(img).shape)

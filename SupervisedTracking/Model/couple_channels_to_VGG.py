@@ -2,7 +2,7 @@ __author__ = "Ami Abutbul"
 import tensorflow as tf
 import numpy as np
 from Model.configuration import *
-from Utilities.nn_utils import conv_relu, fully_connected
+from Utilities.nn_utils import conv_bn_relu, fully_connected, fully_connected_bn
 from Utilities.file_utils import create_dir, write_list_to_file
 from Utilities.stdout_log import StdoutLog
 from Model.Study import StudiesHandler
@@ -11,11 +11,12 @@ import sys
 
 
 class Tracker(object):
-    def __init__(self):
+    def __init__(self, is_training=False):
         self.minibatch_size = tf.placeholder(tf.int32, shape=[], name='minibatch_size')
-        self.input_frames = tf.placeholder(tf.float32, shape=[None, image_height, image_width, 6], name='input')
+        self.input_frames = tf.placeholder(tf.float32, shape=[None, image_height, image_width, input_channels*2], name='input')
         self.target = tf.placeholder(tf.float32, [None, 2])
         self.keep_prob = tf.placeholder(dtype=tf.float32, shape=[], name='keep_prob')
+        self.is_training = is_training
         self.loss = None
         self.out_state = None
         self.optimizer = None
@@ -27,37 +28,37 @@ class Tracker(object):
             with tf.variable_scope("VGG16_conv"):
                 out = tf.nn.avg_pool(self.input_frames, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding="VALID", name='avg_pool')
 
-                out, _ = conv_relu(out, 64, 3, "conv1_1")
-                out, _ = conv_relu(out, 64, 3, "conv1_2")
+                out, _ = conv_bn_relu(out, 64, 3, self.is_training, "conv1_1")
+                out, _ = conv_bn_relu(out, 64, 3, self.is_training, "conv1_2")
                 out = tf.nn.max_pool(out, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name='pool1')
 
-                out, _ = conv_relu(out, 128, 3, "conv2_1")
-                out, _ = conv_relu(out, 128, 3, "conv2_2")
+                out, _ = conv_bn_relu(out, 128, 3, self.is_training, "conv2_1")
+                out, _ = conv_bn_relu(out, 128, 3, self.is_training, "conv2_2")
                 out = tf.nn.max_pool(out, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name='pool2')
 
-                out, _ = conv_relu(out, 256, 3, "conv3_1")
-                out, _ = conv_relu(out, 256, 3, "conv3_2")
-                out, _ = conv_relu(out, 256, 3, "conv3_3")
+                out, _ = conv_bn_relu(out, 256, 3, self.is_training, "conv3_1")
+                out, _ = conv_bn_relu(out, 256, 3, self.is_training, "conv3_2")
+                out, _ = conv_bn_relu(out, 256, 3, self.is_training, "conv3_3")
                 out = tf.nn.max_pool(out, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name='pool3')
 
-                out, _ = conv_relu(out, 512, 3, "conv4_1")
-                out, _ = conv_relu(out, 512, 3, "conv4_2")
-                out, _ = conv_relu(out, 512, 3, "conv4_3")
+                out, _ = conv_bn_relu(out, 512, 3, self.is_training, "conv4_1")
+                out, _ = conv_bn_relu(out, 512, 3, self.is_training, "conv4_2")
+                out, _ = conv_bn_relu(out, 512, 3, self.is_training, "conv4_3")
                 out = tf.nn.max_pool(out, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name='pool4')
 
-                out, _ = conv_relu(out, 512, 3, "conv5_1")
-                out, _ = conv_relu(out, 512, 3, "conv5_2")
-                out, _ = conv_relu(out, 512, 3, "conv5_3")
+                out, _ = conv_bn_relu(out, 512, 3, self.is_training, "conv5_1")
+                out, _ = conv_bn_relu(out, 512, 3, self.is_training, "conv5_2")
+                out, _ = conv_bn_relu(out, 512, 3, self.is_training, "conv5_3")
                 out = tf.nn.max_pool(out, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name='pool5')
 
             with tf.variable_scope("fullyConnected"):
                 out = slim.flatten(out)
 
                 # out = tf.nn.dropout(out, keep_prob=self.keep_prob)
-                out, _ = fully_connected(out, main_fc_size, "fc6")
+                out, _ = fully_connected_bn(out, main_fc_size, self.is_training, "fc6")
                 out = tf.nn.relu(out)
 
-                out, _ = fully_connected(out, main_fc_size, "fc7")
+                out, _ = fully_connected_bn(out, main_fc_size, self.is_training, "fc7")
                 out = tf.nn.relu(out)
 
                 self.predict, _ = fully_connected(out, 2, "fc8")
@@ -73,7 +74,7 @@ class Tracker(object):
 def train(studies_dir, list_of_dirs=False):
     tf.reset_default_graph()
 
-    tracker = Tracker().build()
+    tracker = Tracker(is_training=True).build()
     studies_handler = StudiesHandler(studies_dir, list_of_dirs=list_of_dirs)
 
     create_dir(checkpoint_dir)
@@ -105,8 +106,8 @@ def train(studies_dir, list_of_dirs=False):
                     if image2 is None:
                         break
                     minibatch_size += 1
-                    image1 = image1.reshape((image_height, image_width, 3))
-                    image2 = image2.reshape((image_height, image_width, 3))
+                    image1 = image1.reshape((image_height, image_width, input_channels))
+                    image2 = image2.reshape((image_height, image_width, input_channels))
                     images.append(np.concatenate((image1, image2), axis=2))
                     targets.append([point.x, point.y])
 
@@ -125,7 +126,8 @@ def train(studies_dir, list_of_dirs=False):
                     print("predict: {}, relative: {}".format(predict[j], targets[j]))
 
             write_list_to_file(loss_array, loss_file)
-            saver.save(sess, checkpoint_file)
+            if i % 100 == 0:
+                saver.save(sess, checkpoint_file)
 
 
 # def test(studies_dir, list_of_dirs=False):
@@ -181,7 +183,7 @@ def train(studies_dir, list_of_dirs=False):
 
 if __name__ == '__main__':
     sys.stdout = StdoutLog(log_file, sys.stdout, print_to_log, print_to_stdout)
-
+    print("input channels: {}".format(input_channels))
     if mode == "train":
         print("Start training ..")
         if platform.system() == 'Linux':

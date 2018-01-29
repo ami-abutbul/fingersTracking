@@ -51,6 +51,19 @@ def conv_relu(batch_input, out_channels, filter_size, scope_name="conv"):
         return relu, [filters, bias]
 
 
+def conv_bn_relu(batch_input, out_channels, filter_size, is_training=False, scope_name="conv"):
+    with tf.variable_scope(scope_name):
+        in_channels = batch_input.get_shape()[3]
+
+        filters = tf.get_variable("filter", [filter_size, filter_size, in_channels, out_channels], dtype=tf.float32, initializer=initializer())
+        bias = tf.get_variable('bias', [out_channels], initializer=tf.zeros_initializer())
+        conv_res = tf.nn.conv2d(batch_input, filters, [1, 1, 1, 1], padding="SAME")
+        bias_conv = conv_res + bias
+        bn = tf.contrib.layers.batch_norm(bias_conv, center=True, scale=True, is_training=is_training, scope='batch_norm')
+        relu = tf.nn.relu(bn, name='relu')
+        return relu, [filters, bias]
+
+
 def conv_2_half_size(batch_input, out_channels, scope_name="conv_2_half_size"):
     with tf.variable_scope(scope_name):
         in_channels = batch_input.get_shape()[3]
@@ -88,4 +101,17 @@ def fully_connected(batch_input, output_size, scope_name="fc"):
         in_size = batch_input.get_shape()[1]  # [batch_size, input_size]
         weights = tf.get_variable('weights', [in_size, output_size], initializer=tf.contrib.layers.xavier_initializer())
         bias = tf.get_variable('bias', [output_size], initializer=tf.zeros_initializer())
-        return tf.nn.bias_add(tf.matmul(batch_input, weights), bias), [weights, bias]
+        fc = tf.matmul(batch_input, weights)
+        fc_bias = fc + bias
+        return fc_bias, [weights, bias]
+
+
+def fully_connected_bn(batch_input, output_size, is_training=False, scope_name="fc"):
+    with tf.variable_scope(scope_name):
+        in_size = batch_input.get_shape()[1]  # [batch_size, input_size]
+        weights = tf.get_variable('weights', [in_size, output_size], initializer=tf.contrib.layers.xavier_initializer())
+        bias = tf.get_variable('bias', [output_size], initializer=tf.zeros_initializer())
+        fc = tf.matmul(batch_input, weights)
+        fc_bias = fc + bias
+        bn = tf.contrib.layers.batch_norm(fc_bias, center=True, scale=True, is_training=is_training, scope='batch_norm')
+        return bn, [weights, bias]

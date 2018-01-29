@@ -85,7 +85,12 @@ class Study(object):
     def get_image_by_index(self, index, expand_dim=False):
         if index >= self.frames_len:
             return None
-        mat_image = image_to_mat(Image.open(self.frames[index]), shape=(image_height, image_width, 3))
+        if image_mode == 'Grayscale':
+            im = Image.open(self.frames[index]).convert('L')
+        else:
+            im = Image.open(self.frames[index])
+
+        mat_image = image_to_mat(im, shape=(image_height, image_width, input_channels))
         im = Study._image_pre_processing(mat_image)
         if expand_dim:
             im = np.expand_dims(im, axis=0)

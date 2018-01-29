@@ -18,11 +18,16 @@ main_fc_size = 2048
 batch_size = 1
 
 
-learning_rate = 1e-3
-epoch_num = 20000
+learning_rate = 2e-3
+epoch_num = 100
 
 restore_model = False
 mode = 'train'  # 'train', 'test'
+image_mode = 'Grayscale'  # 'RGB'
+
+input_channels = 3
+if image_mode == 'Grayscale':
+    input_channels = 1
 
 checkpoint_dir = 'models/model1/'
 checkpoint_file = checkpoint_dir + 'model.ckpt'

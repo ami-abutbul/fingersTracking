@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 from Model.configuration import *
 import numpy as np
+from Utilities.file_utils import write_list_to_file
 import os
 import sys
 
@@ -16,20 +17,28 @@ def file_to_list(file):
     return res
 
 if __name__ == '__main__':
-    # if len(sys.argv) == 1:
-    #     print("Error: missing run mode type (hand/fingers)")
-    #     sys.exit(1)
+    # res = []
+    # with open("stats/loss.log", "r") as file:
+    #     for line in file:
+    #         res.append(float(line))
     #
-    # run_mode_type = sys.argv[1]
-    # set_run_config(run_mode_type)
+    # res = np.array(res)
+    # avg = []
+    # for i in range(len(res)//64):
+    #     j = 64*i
+    #     sum_i = np.sum(res[j:j+64])
+    #     avg.append(sum_i/64)
+    #
+    # write_list_to_file(avg, "stats/avg.log")
 
-    loss = file_to_list(os.path.join("stats", loss_file))
 
+    loss = file_to_list(os.path.join("stats", "avg.log"))
+    # loss = file_to_list(os.path.join("stats", loss_file))
     plt.figure(figsize=(RESOLUTION[0]/96, RESOLUTION[1]/96), dpi=96)
 
     sub1 = plt.subplot(111)
-    sub1.set_title("rewards")
+    sub1.set_title("loss")
     sub1.plot(np.arange(1, len(loss)+1), loss)
-
+    plt.grid(True)
     plt.show()
 
